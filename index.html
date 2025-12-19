@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>Indoor Navigation Demo</title>
+
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
+<!-- App CSS -->
+<link rel="stylesheet" href="style.css">
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-polylinedecorator/1.7.0/leaflet.polylineDecorator.min.js"></script>
+</head>
+
+<body>
+
+<div class="control-box">
+    <b>tới hiện vật</b><br>
+    <button onclick="goToTarget('A')">Hiện vật A</button>
+    <button onclick="goToTarget('B')">Hiện vật B</button>
+    <button onclick="goToTarget('C')">Hiện vật C</button>
+</div>
+
+<div id="map"></div>
+
+<!-- App JS -->
+<script src="script.js"></script>
+</body>
+</html>
