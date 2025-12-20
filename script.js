@@ -1,11 +1,15 @@
 /* ===== MAP ===== */
 const W = 40, H = 30;
 
-const map = L.map('map', { crs: L.CRS.Simple });
+const map = L.map('map', {
+  crs: L.CRS.Simple,
+  zoomControl: true
+});
+
 const bounds = [[0,0],[H,W]];
 map.fitBounds(bounds);
-
-setTimeout(()=> map.invalidateSize(), 200);
+L.rectangle(bounds,{color:'#000',weight:2,fillOpacity:0}).addTo(map);
+setTimeout(()=>map.invalidateSize(),200);
 
 /* GRID */
 for(let i=0;i<=W;i+=5)
@@ -15,137 +19,130 @@ for(let i=0;i<=H;i+=5)
 
 /* ===== EXHIBITS ===== */
 const exhibits = {
- A:{x:25,y:10},  
- B:{x:10,y:10},  
- C:{x:10,y:25}   
+  A:{x:35,y:25},
+  B:{x:5,y:5},
+  C:{x:22,y:15}
 };
 
 Object.entries(exhibits).forEach(([k,p])=>{
-  L.marker([p.y,p.x])
-    .addTo(map)
-    .bindTooltip("Hiện vật " + k, { permanent: true });
+  L.marker([p.y,p.x]).addTo(map).bindPopup("Hiện vật "+k);
 });
 
-/* ===== USER ===== */
+/* ===== USERS ===== */
 let user = {x:6,y:6};
-let userMarker = L.circleMarker([user.y,user.x],{
-    radius:8,color:"blue",fillColor:"blue",fillOpacity:1
+const userMarker = L.circleMarker([6,6],{
+  radius:8,color:'blue',fillColor:'blue',fillOpacity:1
 }).addTo(map);
 
-/* ===== OTHER GUESTS ===== */
 const others = [
-    {x:30,y:6,c:"red"},
-    {x:10,y:25,c:"green"},
-    {x:35,y:18,c:"orange"}
+  {x:30,y:6,c:'red'},
+  {x:10,y:25,c:'green'},
+  {x:35,y:18,c:'orange'}
 ];
 
 const otherMarkers = others.map(o =>
-    L.circleMarker([o.y,o.x],{
-        radius:7,color:o.c,fillColor:o.c,fillOpacity:1
-    }).addTo(map)
+  L.circleMarker([o.y,o.x],{
+    radius:7,color:o.c,fillColor:o.c,fillOpacity:1
+  }).addTo(map)
 );
 
-/* ===== ROUTES ===== */
-let fullPath = [];
-let animIndex = 0;
-let animSpeed = 0.5;
-let moving = false;
+/* ===== NAVIGATION ===== */
+let targetKey = null;
+let routeLine = null;
+let arrowDeco = null;
 
-let passedLine = null;     // đường đã đi (đen)
-let remainingLine = null;  // đường còn lại (đỏ)
-let arrowDeco = null;      // mũi tên
-
-/* ===== CREATE ROUTE ===== */
-function buildPath(key){
-    const t = exhibits[key];
-    fullPath = [];
-
-    const steps = 80;
-    for(let i=0; i<=steps; i++){
-        let tVal = i / steps;
-        let x = user.x + (t.x - user.x) * tVal;
-        let y = user.y + (t.y - user.y) * tVal;
-        fullPath.push([y,x]);
-    }
-
-    animIndex = 0;
+function toggleNav(k){
+  targetKey = (targetKey === k) ? null : k;
+  if(!targetKey) clearRoute();
 }
 
-/* ===== UPDATE LINES ===== */
-function updateLines(passed, remaining){
-
-    // xóa line cũ
-    if(passedLine) map.removeLayer(passedLine);
-    if(remainingLine) map.removeLayer(remainingLine);
-    if(arrowDeco) map.removeLayer(arrowDeco);
-
-    // đường đã đi → đen
-    passedLine = L.polyline(passed,{
-        color:"black",
-        weight:4
-    }).addTo(map);
-
-    // đường còn lại → đỏ
-    remainingLine = L.polyline(remaining,{
-        color:"red",
-        weight:4
-    }).addTo(map);
-
-    // mũi tên
-    arrowDeco = L.polylineDecorator(remainingLine,{
-        patterns:[{
-            offset:"50%",
-            repeat:0,
-            symbol:L.Symbol.arrowHead({
-                pixelSize:12,
-                pathOptions:{color:"red"}
-            })
-        }]
-    }).addTo(map);
+function clearRoute(){
+  if(routeLine) map.removeLayer(routeLine);
+  if(arrowDeco) map.removeLayer(arrowDeco);
+  routeLine = arrowDeco = null;
 }
 
-/* ===== ANIMATION ===== */
-function animate(){
-    requestAnimationFrame(animate);
+/* ===== MOVEMENT LOGIC ===== */
 
-    if(moving && animIndex < fullPath.length-1){
-        animIndex += animSpeed;
+// tốc độ CHẬM hơn (ăn mắt)
+const BASE_SPEED = 0.18;
 
-        const idx = Math.floor(animIndex);
+// biên độ lệch ziczac
+const ZIGZAG_STRENGTH = 0.12;
 
-        if(fullPath[idx]){
-            let [y,x] = fullPath[idx];
-            user.x = x;
-            user.y = y;
+// phase cho sin/cos
+let zigPhase = 0;
 
-            userMarker.setLatLng([y,x]);
+function moveWithZigzag(p, target){
+  const dx = target.x - p.x;
+  const dy = target.y - p.y;
+  const d = Math.hypot(dx,dy);
+  if(d < 0.4) return;
 
-            // cắt đường
-            const passed = fullPath.slice(0, idx);
-            const remaining = fullPath.slice(idx);
+  // hướng chuẩn
+  const ux = dx / d;
+  const uy = dy / d;
 
-            updateLines(passed, remaining);
-        }
-    }
+  // hướng vuông góc (để ziczac)
+  zigPhase += 0.3;
+  const zx = -uy * Math.sin(zigPhase) * ZIGZAG_STRENGTH;
+  const zy =  ux * Math.cos(zigPhase) * ZIGZAG_STRENGTH;
 
-    // guest move (slow)
-    others.forEach((o,i)=>{
-        o.x += (Math.random()-.5)*0.05;
-        o.y += (Math.random()-.5)*0.05;
-        otherMarkers[i].setLatLng([o.y,o.x]);
-    });
+  // kết hợp
+  p.x += ux * BASE_SPEED + zx;
+  p.y += uy * BASE_SPEED + zy;
+
+  clamp(p);
 }
-animate();
 
-/* ===== BUTTON ===== */
-function goToTarget(key){
-    moving = false;
-
-    // reset route
-    if(passedLine) map.removeLayer(passedLine);
-    if(remainingLine) map.removeLayer(remainingLine);
-    if(arrowDeco) map.removeLayer(arrowDeco);
-
-    buildPath(key);
-    moving = true;
+function randomMove(p){
+  p.x += (Math.random()-.5)*0.4;
+  p.y += (Math.random()-.5)*0.4;
+  clamp(p);
 }
+
+function clamp(p){
+  p.x = Math.max(1,Math.min(W-1,p.x));
+  p.y = Math.max(1,Math.min(H-1,p.y));
+}
+
+/* ===== MAIN LOOP ===== */
+setInterval(()=>{
+  // USER
+  if(targetKey){
+    moveWithZigzag(user, exhibits[targetKey]);
+    drawRoute(); // route luôn bám theo vị trí mới
+  }else{
+    randomMove(user);
+  }
+  userMarker.setLatLng([user.y,user.x]);
+
+  // OTHERS
+  others.forEach((o,i)=>{
+    randomMove(o);
+    otherMarkers[i].setLatLng([o.y,o.x]);
+  });
+},300);
+
+/* ===== ROUTE DRAW ===== */
+function drawRoute(){
+  clearRoute();
+  const t = exhibits[targetKey];
+
+  routeLine = L.polyline(
+    [[user.y,user.x],[t.y,t.x]],
+    {color:'red',weight:4}
+  ).addTo(map);
+
+  arrowDeco = L.polylineDecorator(routeLine,{
+    patterns:[{
+      offset:'55%',
+      repeat:0,
+      symbol:L.Symbol.arrowHead({
+        pixelSize:14,
+        pathOptions:{color:'red',fillOpacity:1}
+      })
+    }]
+  }).addTo(map);
+}
+
