@@ -1,5 +1,6 @@
-/* ===== MAP ===== */
+/* ===== MAP SETUP ===== */
 const W = 40, H = 30;
+const STEP = 5;
 
 const map = L.map('map', {
   crs: L.CRS.Simple,
@@ -11,137 +12,105 @@ map.fitBounds(bounds);
 L.rectangle(bounds,{color:'#000',weight:2,fillOpacity:0}).addTo(map);
 setTimeout(()=>map.invalidateSize(),200);
 
-/* GRID */
-for(let i=0;i<=W;i+=5)
-  L.polyline([[0,i],[H,i]],{color:'#ddd'}).addTo(map);
-for(let i=0;i<=H;i+=5)
-  L.polyline([[i,0],[i,W]],{color:'#ddd'}).addTo(map);
+/* ===== GRID (HÀNH LANG) ===== */
+for(let i=0;i<=W;i+=STEP){
+  L.polyline([[0,i],[H,i]],{color:'#ccc'}).addTo(map);
+}
+for(let i=0;i<=H;i+=STEP){
+  L.polyline([[i,0],[i,W]],{color:'#ccc'}).addTo(map);
+}
 
 /* ===== EXHIBITS ===== */
 const exhibits = {
   A:{x:35,y:25},
   B:{x:5,y:5},
-  C:{x:22,y:15}
+  C:{x:25,y:10}
 };
 
 Object.entries(exhibits).forEach(([k,p])=>{
   L.marker([p.y,p.x]).addTo(map).bindPopup("Hiện vật "+k);
 });
 
-/* ===== USERS ===== */
-let user = {x:6,y:6};
-const userMarker = L.circleMarker([6,6],{
-  radius:8,color:'blue',fillColor:'blue',fillOpacity:1
+/* ===== USER ===== */
+let user = {x:5,y:5};
+const userMarker = L.circleMarker([user.y,user.x],{
+  radius:8,
+  color:'blue',
+  fillColor:'blue',
+  fillOpacity:1
 }).addTo(map);
 
-const others = [
-  {x:30,y:6,c:'red'},
-  {x:10,y:25,c:'green'},
-  {x:35,y:18,c:'orange'}
-];
+/* ===== PATH STATE ===== */
+let fullPath = [];
+let currentIndex = 0;
+let visitedLine = null;
+let remainingLine = null;
 
-const otherMarkers = others.map(o =>
-  L.circleMarker([o.y,o.x],{
-    radius:7,color:o.c,fillColor:o.c,fillOpacity:1
-  }).addTo(map)
-);
+/* ===== BUILD GRID PATH ===== */
+function buildPath(from, to){
+  const path = [];
+  let x = Math.round(from.x/STEP)*STEP;
+  let y = Math.round(from.y/STEP)*STEP;
+  const tx = Math.round(to.x/STEP)*STEP;
+  const ty = Math.round(to.y/STEP)*STEP;
+
+  while(x !== tx){
+    x += x < tx ? STEP : -STEP;
+    path.push({x,y});
+  }
+  while(y !== ty){
+    y += y < ty ? STEP : -STEP;
+    path.push({x,y});
+  }
+  return path;
+}
 
 /* ===== NAVIGATION ===== */
-let targetKey = null;
-let routeLine = null;
-let arrowDeco = null;
-
-function toggleNav(k){
-  targetKey = (targetKey === k) ? null : k;
-  if(!targetKey) clearRoute();
+function goTo(key){
+  fullPath = buildPath(user, exhibits[key]);
+  currentIndex = 0;
+  drawRoute();
 }
 
-function clearRoute(){
-  if(routeLine) map.removeLayer(routeLine);
-  if(arrowDeco) map.removeLayer(arrowDeco);
-  routeLine = arrowDeco = null;
+/* ===== DRAW ROUTE ===== */
+function drawRoute(){
+  if(visitedLine) map.removeLayer(visitedLine);
+  if(remainingLine) map.removeLayer(remainingLine);
+
+  const visited = fullPath
+    .slice(0,currentIndex)
+    .map(p=>[p.y,p.x]);
+
+  const remaining = [
+    [user.y,user.x],
+    ...fullPath.slice(currentIndex).map(p=>[p.y,p.x])
+  ];
+
+  if(visited.length > 1){
+    visitedLine = L.polyline(visited,{
+      color:'black',
+      weight:5
+    }).addTo(map);
+  }
+
+  if(remaining.length > 1){
+    remainingLine = L.polyline(remaining,{
+      color:'red',
+      weight:5,
+      dashArray:'8,6'
+    }).addTo(map);
+  }
 }
 
-/* ===== MOVEMENT LOGIC ===== */
-
-// tốc độ CHẬM hơn (ăn mắt)
-const BASE_SPEED = 0.18;
-
-// biên độ lệch ziczac
-const ZIGZAG_STRENGTH = 0.12;
-
-// phase cho sin/cos
-let zigPhase = 0;
-
-function moveWithZigzag(p, target){
-  const dx = target.x - p.x;
-  const dy = target.y - p.y;
-  const d = Math.hypot(dx,dy);
-  if(d < 0.4) return;
-
-  // hướng chuẩn
-  const ux = dx / d;
-  const uy = dy / d;
-
-  // hướng vuông góc (để ziczac)
-  zigPhase += 0.3;
-  const zx = -uy * Math.sin(zigPhase) * ZIGZAG_STRENGTH;
-  const zy =  ux * Math.cos(zigPhase) * ZIGZAG_STRENGTH;
-
-  // kết hợp
-  p.x += ux * BASE_SPEED + zx;
-  p.y += uy * BASE_SPEED + zy;
-
-  clamp(p);
-}
-
-function randomMove(p){
-  p.x += (Math.random()-.5)*0.4;
-  p.y += (Math.random()-.5)*0.4;
-  clamp(p);
-}
-
-function clamp(p){
-  p.x = Math.max(1,Math.min(W-1,p.x));
-  p.y = Math.max(1,Math.min(H-1,p.y));
-}
-
-/* ===== MAIN LOOP ===== */
+/* ===== MOVE USER STEP BY STEP ===== */
 setInterval(()=>{
-  // USER
-  if(targetKey){
-    moveWithZigzag(user, exhibits[targetKey]);
-    drawRoute(); // route luôn bám theo vị trí mới
-  }else{
-    randomMove(user);
+  if(currentIndex < fullPath.length){
+    const p = fullPath[currentIndex];
+    user.x = p.x;
+    user.y = p.y;
+    currentIndex++;
+    drawRoute();
   }
   userMarker.setLatLng([user.y,user.x]);
+}, 700); // chậm – nhìn rõ từng khúc rẽ
 
-  // OTHERS
-  others.forEach((o,i)=>{
-    randomMove(o);
-    otherMarkers[i].setLatLng([o.y,o.x]);
-  });
-},300);
-
-/* ===== ROUTE DRAW ===== */
-function drawRoute(){
-  clearRoute();
-  const t = exhibits[targetKey];
-
-  routeLine = L.polyline(
-    [[user.y,user.x],[t.y,t.x]],
-    {color:'red',weight:4}
-  ).addTo(map);
-
-  arrowDeco = L.polylineDecorator(routeLine,{
-    patterns:[{
-      offset:'55%',
-      repeat:0,
-      symbol:L.Symbol.arrowHead({
-        pixelSize:14,
-        pathOptions:{color:'red',fillOpacity:1}
-      })
-    }]
-  }).addTo(map);
-}
