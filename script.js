@@ -65,10 +65,10 @@ function clearRoute(){
 /* ===== MOVEMENT LOGIC ===== */
 
 // tốc độ CHẬM hơn (ăn mắt)
-const BASE_SPEED = 0.23;
+const BASE_SPEED = 0.18;
 
 // biên độ lệch ziczac
-const ZIGZAG_STRENGTH = 0.3;
+const ZIGZAG_STRENGTH = 0.12;
 
 // phase cho sin/cos
 let zigPhase = 0;
@@ -84,7 +84,7 @@ function moveWithZigzag(p, target){
   const uy = dy / d;
 
   // hướng vuông góc (để ziczac)
-  zigPhase += 0.4;
+  zigPhase += 0.3;
   const zx = -uy * Math.sin(zigPhase) * ZIGZAG_STRENGTH;
   const zy =  ux * Math.cos(zigPhase) * ZIGZAG_STRENGTH;
 
@@ -145,4 +145,3 @@ function drawRoute(){
     }]
   }).addTo(map);
 }
-
